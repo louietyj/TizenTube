@@ -10,36 +10,27 @@ function enableNativeTextInput() {
     return;
   }
 
-  // Get keyboard callback reference (zd callback from any keyboard button)
-  // Retries if keyboard is not yet available
-  function getKeyboardCallback() {
-    const keyboardButtons = Array.from(document.querySelectorAll("yt-keyboard-key"));
-    const anyButton = keyboardButtons.find((btn) => {
-      const text = btn.textContent?.trim();
-      return text && text.length === 1 && /^[A-Z]$/i.test(text);
-    });
-    const callback = anyButton?.__instance?.props?.zd;
-    if (typeof callback === "function") {
-      return callback;
+  // Get the search container's w1 method which updates search state and triggers autocomplete
+  // This is the proper entry point: (1) replace source of truth (2) trigger autocomplete entry point
+  function getSearchStateUpdater() {
+    const searchContainer = document.querySelector("ytlr-search-container");
+    if (!searchContainer || !searchContainer.__instance) {
+      return null;
+    }
+    const w1Method = searchContainer.__instance.w1;
+    if (typeof w1Method === "function") {
+      return w1Method.bind(searchContainer.__instance);
     }
     return null;
   }
 
-  // Get special button callbacks (backspace, space, clear)
-  function getSpecialButtonCallback(action) {
-    const keyboardButtons = Array.from(document.querySelectorAll("yt-keyboard-key"));
-    const button = keyboardButtons.find((btn) => {
-      const text = btn.textContent?.trim();
-      if (action === "BACKSPACE") return text === "Backspace";
-      if (action === "SPACE") return text === "SPACE";
-      if (action === "CLEAR") return text === "CLEAR";
-      return false;
-    });
-    const callback = button?.__instance?.props?.zd;
-    if (typeof callback === "function") {
-      return callback;
+  // Get current search state from the container
+  function getCurrentSearchState() {
+    const searchContainer = document.querySelector("ytlr-search-container");
+    if (!searchContainer || !searchContainer.__instance) {
+      return null;
     }
-    return null;
+    return searchContainer.__instance.state?.searchState || null;
   }
 
   function patchSearchTextBox() {
@@ -59,8 +50,16 @@ function enableNativeTextInput() {
     input.type = "text";
     input.placeholder = "Search";
     input.setAttribute("aria-label", "Search");
+    // Make input invisible but keep it functional for Fire TV's native IME
+    // opacity: 0 makes it invisible, but it remains focusable and functional
     input.style.cssText =
-      "width: 100%; height: 100%; background: transparent; border: none; color: inherit; font-size: inherit; font-family: inherit; padding: 0; margin: 0; outline: none;";
+      "position: absolute; width: 100%; height: 100%; background: transparent; border: none; color: transparent; font-size: inherit; font-family: inherit; padding: 0; margin: 0; outline: none; opacity: 0;";
+    
+    // Ensure textBox has position relative so absolute positioning works
+    const textBoxStyle = window.getComputedStyle(textBox);
+    if (textBoxStyle.position === 'static') {
+      textBox.style.position = 'relative';
+    }
 
     // Replace content with input
     textBox.innerHTML = "";
@@ -87,8 +86,9 @@ function enableNativeTextInput() {
         return `<div dir="ltr" class="e4W0B"><div class="DvQL1c"><span class="PyCend"><span class="wzNiJf w5DDBc">${value}</span></span></div></div>`;
       },
       set: function(value) {
-        // Extract text from YouTube TV's HTML structure
-        if (!isUpdatingFromInput && value) {
+        // Extract text from YouTube TV's HTML structure and update input
+        // But DON'T actually set innerHTML - keep our input element
+        if (!isUpdatingFromInput && value && input && input.parentNode === textBox) {
           const tempDiv = document.createElement("div");
           tempDiv.innerHTML = value;
           const extractedText = tempDiv.textContent || tempDiv.innerText || "";
@@ -106,7 +106,11 @@ function enableNativeTextInput() {
             searchTextBox.dispatchEvent(inputEvent);
           }
         }
-        // Don't actually set innerHTML - keep our input
+        // Don't call original setter - prevent YouTube TV from replacing our input
+        // If input was removed somehow, re-apply patch
+        if (!textBox.querySelector("input")) {
+          setTimeout(() => patchSearchTextBox(), 0);
+        }
       },
       configurable: true
     });
@@ -137,63 +141,36 @@ function enableNativeTextInput() {
     // Track previous value to detect changes
     let previousValue = input.value;
 
-    // Listen for input changes and sync to YouTube TV via keyboard callback
+    // Listen for input changes and sync to YouTube TV via w1 method
+    // This updates the source of truth and triggers autocomplete in one call
     input.addEventListener("input", (e) => {
       const value = input.value;
       const inputType = e.inputType || "insertText";
       
-      // Get keyboard callback
-      const zdCallback = getKeyboardCallback();
-      if (zdCallback && typeof zdCallback === "function") {
-        // Detect what changed
-        if (inputType === "deleteContentBackward" || inputType === "deleteBackward") {
-          // Backspace was pressed
-          const backspaceCallback = getSpecialButtonCallback("BACKSPACE");
-          if (backspaceCallback && typeof backspaceCallback === "function") {
-            backspaceCallback({
-              label: "Backspace",
-              action: "BACKSPACE",
-              ariaLabel: "backspace"
-            });
-          }
-        } else if (value.length > previousValue.length) {
-          // Characters were added
-          const addedChars = value.slice(previousValue.length);
-          for (let i = 0; i < addedChars.length; i++) {
-            const char = addedChars[i];
-            if (char === " ") {
-              // Space character
-              const spaceCallback = getSpecialButtonCallback("SPACE");
-              if (spaceCallback && typeof spaceCallback === "function") {
-                spaceCallback({
-                  label: "SPACE",
-                  action: "SPACE",
-                  ariaLabel: "space"
-                });
-              }
-            } else if (/^[a-zA-Z0-9\-']$/.test(char)) {
-              // Regular character
-              zdCallback({
-                label: char.toUpperCase(),
-                action: "TEXT",
-                ariaLabel: char.toLowerCase()
-              });
-            }
-          }
-        } else if (value.length < previousValue.length) {
-          // Characters were deleted (but not via backspace - might be cut/delete)
-          // Use backspace callback for each deleted character
-          const deletedCount = previousValue.length - value.length;
-          const backspaceCallback = getSpecialButtonCallback("BACKSPACE");
-          if (backspaceCallback && typeof backspaceCallback === "function") {
-            for (let i = 0; i < deletedCount; i++) {
-              backspaceCallback({
-                label: "Backspace",
-                action: "BACKSPACE",
-                ariaLabel: "backspace"
-              });
-            }
-          }
+      // Get the search state updater (w1 method)
+      const updateSearchState = getSearchStateUpdater();
+      const currentState = getCurrentSearchState();
+      
+      if (updateSearchState && currentState) {
+        // Update searchQuery with the new value
+        // Structure: { userInput: "text", tc: "", uc: "PRE_FETCH_SUGGESTION" }
+        const newSearchQuery = {
+          userInput: value,
+          tc: "",
+          uc: "PRE_FETCH_SUGGESTION"
+        };
+        
+        // Create partial searchState update with new searchQuery
+        const searchStateUpdate = {
+          ...currentState,
+          searchQuery: newSearchQuery
+        };
+        
+        // Call w1 to update source of truth and trigger autocomplete
+        try {
+          updateSearchState(searchStateUpdate);
+        } catch (err) {
+          console.warn("TizenTube Native Text Input: Failed to update search state", err);
         }
       }
       
@@ -219,62 +196,70 @@ function enableNativeTextInput() {
       input.focus();
     });
     
-    // Sync on paste - trigger zd callback for each pasted character
-    input.addEventListener("paste", (e) => {
-      setTimeout(() => {
-        const value = input.value;
-        const zdCallback = getKeyboardCallback();
-        
-        if (zdCallback && typeof zdCallback === "function") {
-          // Get the pasted portion (difference between old and new value)
-          const pastedText = value.slice(previousValue.length);
-          for (let i = 0; i < pastedText.length; i++) {
-            const char = pastedText[i];
-            if (char === " ") {
-              const spaceCallback = getSpecialButtonCallback("SPACE");
-              if (spaceCallback && typeof spaceCallback === "function") {
-                spaceCallback({
-                  label: "SPACE",
-                  action: "SPACE",
-                  ariaLabel: "space"
-                });
-              }
-            } else if (/^[a-zA-Z0-9\-']$/.test(char)) {
-              zdCallback({
-                label: char.toUpperCase(),
-                action: "TEXT",
-                ariaLabel: char.toLowerCase()
-              });
-            }
-          }
+    // Prevent YouTube TV from replacing our input by intercepting DOM manipulation methods
+    const originalReplaceChildren = textBox.replaceChildren;
+    const originalAppendChild = textBox.appendChild;
+    const originalRemoveChild = textBox.removeChild;
+    
+    textBox.replaceChildren = function(...nodes) {
+      // If trying to replace with non-input elements, extract text and update input instead
+      const hasInput = nodes.some(node => node.tagName === "INPUT");
+      if (!hasInput && input && input.parentNode === textBox) {
+        // Extract text from nodes
+        const tempDiv = document.createElement("div");
+        nodes.forEach(node => tempDiv.appendChild(node.cloneNode(true)));
+        const extractedText = tempDiv.textContent || tempDiv.innerText || "";
+        if (extractedText !== input.value) {
+          input.value = extractedText;
+          const inputEvent = new InputEvent("input", {
+            bubbles: true,
+            cancelable: true,
+            inputType: "insertText",
+            data: extractedText
+          });
+          input.dispatchEvent(inputEvent);
         }
-        
-        previousValue = value;
-        isUpdatingFromInput = true;
-        textBox.textContent = value;
-        isUpdatingFromInput = false;
-        
-        const event = new InputEvent("input", {
-          bubbles: true,
-          cancelable: true,
-          inputType: "insertFromPaste",
-          data: value
-        });
-        textBox.dispatchEvent(event);
-        searchTextBox.dispatchEvent(event);
-      }, 0);
-    });
+        return; // Don't actually replace children
+      }
+      return originalReplaceChildren.apply(this, nodes);
+    };
+    
+    textBox.appendChild = function(node) {
+      // If trying to append a non-input when we have an input, update input value instead
+      if (node.tagName !== "INPUT" && input && input.parentNode === textBox) {
+        const extractedText = node.textContent || node.innerText || "";
+        if (extractedText && extractedText !== input.value) {
+          input.value = extractedText;
+          const inputEvent = new InputEvent("input", {
+            bubbles: true,
+            cancelable: true,
+            inputType: "insertText",
+            data: extractedText
+          });
+          input.dispatchEvent(inputEvent);
+        }
+        return node; // Return node but don't actually append
+      }
+      return originalAppendChild.apply(this, arguments);
+    };
+    
+    textBox.removeChild = function(node) {
+      // Prevent removal of our input element
+      if (node === input) {
+        console.warn("TizenTube Native Text Input: Prevented removal of input element");
+        return node; // Return node but don't actually remove
+      }
+      return originalRemoveChild.apply(this, arguments);
+    };
     
     // Watch for when YouTube TV tries to replace our input
     const textBoxObserver = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === "childList" && !textBox.querySelector("input")) {
-          // YouTube TV replaced our input, re-apply patch
-          setTimeout(() => {
-            if (!textBox.querySelector("input")) {
-              patchSearchTextBox();
-            }
-          }, 0);
+          // YouTube TV replaced our input, re-apply patch immediately
+          if (!textBox.querySelector("input")) {
+            patchSearchTextBox();
+          }
         }
       });
     });
