@@ -41,19 +41,20 @@ function enableNativeTextInput() {
   
   toast("Native keyboard ready! Click search bar to type.");
 
-  // Check if the search bar is focused (using zylon-focus class)
-  function isSearchBarFocused() {
-    const focusedSearchBar = document.querySelector('ytlr-search-bar.zylon-focus');
-    return !!focusedSearchBar;
+  // Get the search bar element
+  const searchBar = document.querySelector('ytlr-search-text-box ytlr-text-box');
+  
+  // Make search bar focusable and clickable by adding hybridnavfocusable
+  if (searchBar) {
+    searchBar.setAttribute('hybridnavfocusable', 'true');
+    searchBar.setAttribute('aria-label', 'Search');
+    toast("Search bar is now focusable!");
   }
 
-  // Get current search text from the focused search bar
+  // Get current search text from the search bar display
   function getCurrentSearchText() {
     try {
-      const focusedSearchBar = document.querySelector('ytlr-search-bar.zylon-focus');
-      if (!focusedSearchBar) return '';
-      
-      const textSpan = focusedSearchBar.querySelector('.wzNiJf');
+      const textSpan = document.querySelector('ytlr-search-text-box .wzNiJf');
       const text = textSpan?.textContent || '';
       // Return empty string if it's just the placeholder "Search"
       return text === 'Search' ? '' : text;
@@ -84,28 +85,43 @@ function enableNativeTextInput() {
     }
   }
 
-  // Intercept Enter key ONLY when search bar is focused
-  document.addEventListener("keydown", (e) => {
-    if ((e.keyCode === 13 || e.key === "Enter") && isSearchBarFocused()) {
+  // Trigger native keyboard and populate with current search text
+  function openNativeKeyboard() {
+    const currentText = getCurrentSearchText();
+    toast("Opening keyboard" + (currentText ? ` (current: "${currentText}")` : "..."));
+
+    // Clear existing text so the new input replaces it
+    if (currentText) {
+      clearSearchText();
+    }
+
+    try {
+      window.h5vcc.tizentube.ShowKeyboard();
+    } catch (err) {
+      toast("ShowKeyboard error: " + err.message);
+      console.error("NTI ShowKeyboard error:", err);
+    }
+  }
+
+  // Intercept clicks on the search bar
+  if (searchBar) {
+    searchBar.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+      openNativeKeyboard();
+      return false;
+    }, true); // capture phase
+  }
 
-      const currentText = getCurrentSearchText();
-      toast("Opening keyboard" + (currentText ? ` (current: "${currentText}")` : "..."));
-
-      // Clear existing text so the new input replaces it
-      if (currentText) {
-        clearSearchText();
-      }
-
-      try {
-        window.h5vcc.tizentube.ShowKeyboard();
-      } catch (err) {
-        toast("ShowKeyboard error: " + err.message);
-        console.error("NTI ShowKeyboard error:", err);
-      }
-      return;
+  // Also intercept Enter key when search bar is focused
+  document.addEventListener("keydown", (e) => {
+    if ((e.keyCode === 13 || e.key === "Enter") && document.activeElement === searchBar) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      openNativeKeyboard();
+      return false;
     }
   }, true); // capture phase
 }
