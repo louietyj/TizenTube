@@ -108,26 +108,26 @@ function enableNativeTextInput() {
     }
     voiceMicButton._ntiOverridden = true;
     
-    toast("Voice button found - overriding...");
+    toast("Voice button found - replacing completely...");
     
-    // Stop all events in capture phase before they reach YouTube's handlers
-    ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(eventType => {
-      voiceMicButton.addEventListener(eventType, (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        
-        if (eventType === 'click') {
-          toast("Voice button: opening native keyboard!");
-          openNativeKeyboard();
-        }
-        
-        return false;
-      }, true); // capture phase
-    });
+    // Nuclear option: Clone the element to remove ALL event listeners
+    const newButton = voiceMicButton.cloneNode(true);
+    voiceMicButton.parentNode.replaceChild(newButton, voiceMicButton);
+    newButton._ntiOverridden = true; // Mark the clone
     
-    // Also intercept Enter key when focused
-    voiceMicButton.addEventListener('keydown', (e) => {
+    // Add our handler to the fresh clone
+    newButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      
+      toast("Voice button: opening native keyboard!");
+      openNativeKeyboard();
+      return false;
+    }, true);
+    
+    // Intercept Enter key when focused
+    newButton.addEventListener('keydown', (e) => {
       if (e.keyCode === 13 || e.key === "Enter") {
         e.preventDefault();
         e.stopPropagation();
@@ -137,7 +137,7 @@ function enableNativeTextInput() {
         openNativeKeyboard();
         return false;
       }
-    }, true); // capture phase
+    }, true);
   }
   
   // Run periodically to catch dynamically added buttons
