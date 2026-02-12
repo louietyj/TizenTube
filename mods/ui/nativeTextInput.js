@@ -39,17 +39,32 @@ function enableNativeTextInput() {
     return;
   }
   
-  toast("Native keyboard ready! Click search bar to type.");
+  // Wait for search bar to appear and make it focusable
+  let searchBarCheckInterval = null;
+  let searchBar = null;
 
-  // Get the search bar element
-  const searchBar = document.querySelector('ytlr-search-text-box ytlr-text-box');
-  
-  // Make search bar focusable and clickable by adding hybridnavfocusable
-  if (searchBar) {
-    searchBar.setAttribute('hybridnavfocusable', 'true');
-    searchBar.setAttribute('aria-label', 'Search');
-    toast("Search bar is now focusable!");
+  function makeSearchBarFocusable() {
+    searchBar = document.querySelector('ytlr-search-text-box ytlr-text-box');
+    
+    if (searchBar && !searchBar.getAttribute('hybridnavfocusable')) {
+      searchBar.setAttribute('hybridnavfocusable', 'true');
+      searchBar.setAttribute('aria-label', 'Search');
+      toast("Search bar is now focusable!");
+      return true;
+    }
+    return false;
   }
+
+  // Check periodically for search bar and make it focusable
+  searchBarCheckInterval = setInterval(() => {
+    if (makeSearchBarFocusable()) {
+      // Keep checking in case page changes
+    }
+  }, 500);
+
+  // Initial check
+  makeSearchBarFocusable();
+  toast("Native keyboard ready! Click search bar to type.");
 
   // Get current search text from the search bar display
   function getCurrentSearchText() {
@@ -103,25 +118,31 @@ function enableNativeTextInput() {
     }
   }
 
-  // Intercept clicks on the search bar
-  if (searchBar) {
-    searchBar.addEventListener('click', (e) => {
+  // Use event delegation since search bar might not exist yet
+  document.addEventListener('click', (e) => {
+    const target = e.target.closest('ytlr-search-text-box ytlr-text-box');
+    if (target) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+      toast("Search bar clicked!");
       openNativeKeyboard();
       return false;
-    }, true); // capture phase
-  }
+    }
+  }, true); // capture phase
 
   // Also intercept Enter key when search bar is focused
   document.addEventListener("keydown", (e) => {
-    if ((e.keyCode === 13 || e.key === "Enter") && document.activeElement === searchBar) {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      openNativeKeyboard();
-      return false;
+    if (e.keyCode === 13 || e.key === "Enter") {
+      const currentSearchBar = document.querySelector('ytlr-search-text-box ytlr-text-box');
+      if (document.activeElement === currentSearchBar) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        toast("Enter pressed on search bar!");
+        openNativeKeyboard();
+        return false;
+      }
     }
   }, true); // capture phase
 }
