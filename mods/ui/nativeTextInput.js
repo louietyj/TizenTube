@@ -43,21 +43,65 @@ function enableNativeTextInput() {
   }
 
   // === DIAGNOSTIC: dump available APIs ===
-  debugLog("=== h5vcc keys: " + Object.keys(window.h5vcc).join(", "));
-
-  // Dump each h5vcc sub-object's keys
-  for (const key of Object.keys(window.h5vcc)) {
+  // h5vcc properties are non-enumerable, so Object.keys() returns [].
+  // Probe known Cobalt h5vcc sub-objects and use getOwnPropertyNames + for..in
+  const h5 = window.h5vcc;
+  const knownH5vccProps = [
+    "accessibility", "audioColumns", "cVal", "crashLog", "metrics",
+    "runtime", "settings", "storage", "system", "traceEvent",
+    "updater", "screen", "tizentube", "net", "sso", "speech",
+    "pairDevice", "telephony", "time", "account"
+  ];
+  const foundProps = [];
+  for (const name of knownH5vccProps) {
     try {
-      const val = window.h5vcc[key];
-      const type = typeof val;
-      if (type === "object" && val !== null) {
-        const subkeys = Object.keys(val);
-        debugLog("h5vcc." + key + " = {" + subkeys.join(", ") + "}");
+      if (h5[name] !== undefined) foundProps.push(name + ":" + typeof h5[name]);
+    } catch (_) {}
+  }
+  // Also try getOwnPropertyNames and for..in
+  try {
+    const ownNames = Object.getOwnPropertyNames(h5);
+    if (ownNames.length) foundProps.push("__own__=[" + ownNames.join(",") + "]");
+  } catch (_) {}
+  try {
+    const inherited = [];
+    for (const k in h5) inherited.push(k);
+    if (inherited.length) foundProps.push("__forin__=[" + inherited.join(",") + "]");
+  } catch (_) {}
+  // Proto
+  try {
+    const proto = Object.getPrototypeOf(h5);
+    if (proto && proto !== Object.prototype) {
+      const protoNames = Object.getOwnPropertyNames(proto);
+      foundProps.push("__proto__=[" + protoNames.join(",") + "]");
+    }
+  } catch (_) {}
+  debugLog("=== h5vcc found: " + foundProps.join(" | "));
+
+  // Deep-dump each found sub-object
+  for (const name of knownH5vccProps) {
+    try {
+      const val = h5[name];
+      if (val === undefined) continue;
+      if (typeof val === "object" && val !== null) {
+        const sub = [];
+        // getOwnPropertyNames
+        try { for (const k of Object.getOwnPropertyNames(val)) sub.push(k); } catch (_) {}
+        // prototype
+        try {
+          const p = Object.getPrototypeOf(val);
+          if (p && p !== Object.prototype) {
+            for (const k of Object.getOwnPropertyNames(p)) {
+              if (k !== "constructor") sub.push("(p)" + k);
+            }
+          }
+        } catch (_) {}
+        debugLog("  h5vcc." + name + ": " + sub.join(", "));
       } else {
-        debugLog("h5vcc." + key + " = " + type + ": " + String(val).slice(0, 80));
+        debugLog("  h5vcc." + name + " = " + typeof val + ": " + String(val).slice(0, 100));
       }
     } catch (e) {
-      debugLog("h5vcc." + key + " = ERROR: " + e.message);
+      debugLog("  h5vcc." + name + " ERROR: " + e.message);
     }
   }
 
