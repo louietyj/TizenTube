@@ -41,19 +41,35 @@ function enableNativeTextInput() {
   
   toast("Native keyboard ready! Press Enter on search to type.");
 
-  // Check if user is on the search keyboard area
-  function isSearchActive() {
-    const container = document.querySelector("ytlr-search-container");
-    if (!container) return false;
-    return !!container.querySelector(".zylon-focus");
+  // Check if the mic button is focused (the button that triggers voice search)
+  function isMicButtonFocused() {
+    const micButton = document.querySelector('ytlr-search-box-buttons button[aria-label*="voice" i], ytlr-search-box-buttons button[aria-label*="mic" i]');
+    return micButton && micButton.classList.contains('zylon-focus');
   }
 
-  // Intercept Enter key on the search keyboard to show native keyboard
+  // Clear the search input before showing keyboard
+  function clearSearchInput() {
+    try {
+      const searchInput = document.querySelector('ytlr-search-box input, ytlr-search-box #input');
+      if (searchInput) {
+        searchInput.value = '';
+        // Dispatch input event to notify YouTube TV
+        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    } catch (err) {
+      console.warn("NTI: Could not clear search input:", err);
+    }
+  }
+
+  // Intercept Enter key ONLY when mic button is focused
   document.addEventListener("keydown", (e) => {
-    if ((e.keyCode === 13 || e.key === "Enter") && isSearchActive()) {
+    if ((e.keyCode === 13 || e.key === "Enter") && isMicButtonFocused()) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+
+      // Clear existing search text
+      clearSearchInput();
 
       toast("Opening native keyboard...");
       try {
