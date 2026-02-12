@@ -17,22 +17,29 @@ function toast(msg) {
 }
 
 function enableNativeTextInput() {
-  if (!window.h5vcc || !window.h5vcc.tizentube) return; // Cobalt only
+  toast("NTI init: checking h5vcc...");
+  
+  if (!window.h5vcc || !window.h5vcc.tizentube) {
+    toast("NTI: No h5vcc.tizentube - not Cobalt or wrong build");
+    return;
+  }
+  
   if (!window._yttv) {
+    toast("NTI: Waiting for YouTube TV app to load...");
     setTimeout(enableNativeTextInput, 250);
     return;
   }
 
   // Check if ShowKeyboard is available
   const hasShowKeyboard = typeof window.h5vcc.tizentube.ShowKeyboard === "function";
-  toast(hasShowKeyboard
-    ? "Native keyboard ready! Press Enter on search to type."
-    : "ShowKeyboard not available in this build.");
+  toast("h5vcc.tizentube.ShowKeyboard: " + (hasShowKeyboard ? "AVAILABLE ✓" : "NOT FOUND"));
 
   if (!hasShowKeyboard) {
     console.warn("NTI: h5vcc.tizentube.ShowKeyboard not available");
     return;
   }
+  
+  toast("Native keyboard ready! Press Enter on search to type.");
 
   // Check if user is on the search keyboard area
   function isSearchActive() {
