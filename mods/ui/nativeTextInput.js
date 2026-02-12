@@ -41,16 +41,19 @@ function enableNativeTextInput() {
   
   toast("Native keyboard ready! Click search bar to type.");
 
-  // Check if the search bar (text box) is focused
+  // Check if the search bar is focused (using zylon-focus class)
   function isSearchBarFocused() {
-    const searchTextBox = document.querySelector('ytlr-search-text-box ytlr-text-box');
-    return searchTextBox && searchTextBox.classList.contains('zylon-focus');
+    const focusedSearchBar = document.querySelector('ytlr-search-bar.zylon-focus');
+    return !!focusedSearchBar;
   }
 
-  // Get current search text
+  // Get current search text from the focused search bar
   function getCurrentSearchText() {
     try {
-      const textSpan = document.querySelector('ytlr-search-text-box .wzNiJf');
+      const focusedSearchBar = document.querySelector('ytlr-search-bar.zylon-focus');
+      if (!focusedSearchBar) return '';
+      
+      const textSpan = focusedSearchBar.querySelector('.wzNiJf');
       const text = textSpan?.textContent || '';
       // Return empty string if it's just the placeholder "Search"
       return text === 'Search' ? '' : text;
