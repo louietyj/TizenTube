@@ -44,9 +44,12 @@ function enableNativeTextInput() {
   let searchBar = null;
 
   function makeSearchBarFocusable() {
-    searchBar = document.querySelector('ytlr-search-text-box ytlr-text-box');
+    const searchTextBoxParent = document.querySelector('ytlr-search-text-box');
+    searchBar = searchTextBoxParent?.querySelector('ytlr-text-box');
     
-    if (searchBar && !searchBar.getAttribute('hybridnavfocusable')) {
+    if (searchBar && searchTextBoxParent && !searchBar.getAttribute('hybridnavfocusable')) {
+      // Add to BOTH parent and child (like the button renderer does)
+      searchTextBoxParent.setAttribute('hybridnavfocusable', 'true');
       searchBar.setAttribute('hybridnavfocusable', 'true');
       searchBar.setAttribute('aria-label', 'Search');
       toast("Search bar is now focusable!");
