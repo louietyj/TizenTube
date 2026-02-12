@@ -95,35 +95,54 @@ function enableNativeTextInput() {
     }
   }
 
-  // Intercept Enter key on voice mic button
-  document.addEventListener("keydown", (e) => {
-    if (e.keyCode === 13 || e.key === "Enter") {
-      const voiceMicButton = document.querySelector('ytlr-search-voice-mic-button');
-      if (voiceMicButton && voiceMicButton.classList.contains('zylon-focus')) {
+  // Override voice mic button behavior
+  function overrideVoiceButton() {
+    const voiceMicButton = document.querySelector('ytlr-search-voice-mic-button');
+    if (!voiceMicButton) {
+      return; // Will retry
+    }
+    
+    // Mark as overridden
+    if (voiceMicButton._ntiOverridden) {
+      return;
+    }
+    voiceMicButton._ntiOverridden = true;
+    
+    toast("Voice button found - overriding...");
+    
+    // Stop all events in capture phase before they reach YouTube's handlers
+    ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(eventType => {
+      voiceMicButton.addEventListener(eventType, (e) => {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
         
-        toast("Voice button: opening native keyboard instead!");
+        if (eventType === 'click') {
+          toast("Voice button: opening native keyboard!");
+          openNativeKeyboard();
+        }
+        
+        return false;
+      }, true); // capture phase
+    });
+    
+    // Also intercept Enter key when focused
+    voiceMicButton.addEventListener('keydown', (e) => {
+      if (e.keyCode === 13 || e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        
+        toast("Voice button Enter: opening native keyboard!");
         openNativeKeyboard();
         return false;
       }
-    }
-  }, true); // capture phase
-
-  // Also intercept clicks on voice mic button
-  document.addEventListener("click", (e) => {
-    const voiceMicButton = e.target.closest('ytlr-search-voice-mic-button');
-    if (voiceMicButton) {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      
-      toast("Voice button clicked: opening native keyboard!");
-      openNativeKeyboard();
-      return false;
-    }
-  }, true); // capture phase
+    }, true); // capture phase
+  }
+  
+  // Run periodically to catch dynamically added buttons
+  setInterval(overrideVoiceButton, 500);
+  overrideVoiceButton();
 }
 
 // --- Init ---
