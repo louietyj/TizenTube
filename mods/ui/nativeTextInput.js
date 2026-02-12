@@ -39,39 +39,63 @@ function enableNativeTextInput() {
     return;
   }
   
-  toast("Native keyboard ready! Press Enter on search to type.");
+  toast("Native keyboard ready! Click search bar to type.");
 
-  // Check if the mic button is focused (the button that triggers voice search)
-  function isMicButtonFocused() {
-    const micButton = document.querySelector('ytlr-search-box-buttons button[aria-label*="voice" i], ytlr-search-box-buttons button[aria-label*="mic" i]');
-    return micButton && micButton.classList.contains('zylon-focus');
+  // Check if the search bar (text box) is focused
+  function isSearchBarFocused() {
+    const searchTextBox = document.querySelector('ytlr-search-text-box ytlr-text-box');
+    return searchTextBox && searchTextBox.classList.contains('zylon-focus');
   }
 
-  // Clear the search input before showing keyboard
-  function clearSearchInput() {
+  // Get current search text
+  function getCurrentSearchText() {
     try {
-      const searchInput = document.querySelector('ytlr-search-box input, ytlr-search-box #input');
-      if (searchInput) {
-        searchInput.value = '';
-        // Dispatch input event to notify YouTube TV
-        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+      const textSpan = document.querySelector('ytlr-search-text-box .wzNiJf');
+      const text = textSpan?.textContent || '';
+      // Return empty string if it's just the placeholder "Search"
+      return text === 'Search' ? '' : text;
     } catch (err) {
-      console.warn("NTI: Could not clear search input:", err);
+      return '';
     }
   }
 
-  // Intercept Enter key ONLY when mic button is focused
+  // Clear the search text by sending backspace events
+  function clearSearchText() {
+    try {
+      const currentText = getCurrentSearchText();
+      if (!currentText) return;
+      
+      // Send backspace events to clear existing text
+      for (let i = 0; i < currentText.length + 5; i++) {
+        const event = new KeyboardEvent('keydown', {
+          key: 'Backspace',
+          keyCode: 8,
+          code: 'Backspace',
+          bubbles: true,
+          cancelable: true
+        });
+        document.dispatchEvent(event);
+      }
+    } catch (err) {
+      console.warn("NTI: Could not clear search text:", err);
+    }
+  }
+
+  // Intercept Enter key ONLY when search bar is focused
   document.addEventListener("keydown", (e) => {
-    if ((e.keyCode === 13 || e.key === "Enter") && isMicButtonFocused()) {
+    if ((e.keyCode === 13 || e.key === "Enter") && isSearchBarFocused()) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
 
-      // Clear existing search text
-      clearSearchInput();
+      const currentText = getCurrentSearchText();
+      toast("Opening keyboard" + (currentText ? ` (current: "${currentText}")` : "..."));
 
-      toast("Opening native keyboard...");
+      // Clear existing text so the new input replaces it
+      if (currentText) {
+        clearSearchText();
+      }
+
       try {
         window.h5vcc.tizentube.ShowKeyboard();
       } catch (err) {
