@@ -39,56 +39,30 @@ function enableNativeTextInput() {
     return;
   }
   
-  // Wait for search bar to appear and make it focusable
-  let searchBarCheckInterval = null;
-  let searchBar = null;
+  toast("Native keyboard ready! Click voice button to type.");
 
-  function makeSearchBarFocusable() {
-    const searchTextBoxParent = document.querySelector('ytlr-search-text-box');
-    searchBar = searchTextBoxParent?.querySelector('ytlr-text-box');
-    
-    if (searchBar && searchTextBoxParent && !searchBar.getAttribute('hybridnavfocusable')) {
-      // Add to BOTH parent and child (like the button renderer does)
-      searchTextBoxParent.setAttribute('hybridnavfocusable', 'true');
-      searchBar.setAttribute('hybridnavfocusable', 'true');
-      searchBar.setAttribute('aria-label', 'Search');
-      toast("Search bar is now focusable!");
-      return true;
-    }
-    return false;
-  }
-
-  // Check periodically for search bar and make it focusable
-  searchBarCheckInterval = setInterval(() => {
-    if (makeSearchBarFocusable()) {
-      // Keep checking in case page changes
-    }
-  }, 500);
-
-  // Initial check
-  makeSearchBarFocusable();
-  toast("Native keyboard ready! Click search bar to type.");
-
-  // Get current search text from the search bar display
-  function getCurrentSearchText() {
+  // Get current search query from YouTube TV's internal state (source of truth)
+  function getCurrentSearchQuery() {
     try {
-      const textSpan = document.querySelector('ytlr-search-text-box .wzNiJf');
-      const text = textSpan?.textContent || '';
-      // Return empty string if it's just the placeholder "Search"
-      return text === 'Search' ? '' : text;
+      const searchTextBox = document.querySelector('ytlr-search-text-box');
+      const searchQuery = searchTextBox?.__instance?.props?.searchQuery?.userInput;
+      return searchQuery || '';
     } catch (err) {
+      console.warn("NTI: Could not get search query:", err);
       return '';
     }
   }
 
-  // Clear the search text by sending backspace events
-  function clearSearchText() {
+  // Clear the search query by sending backspace events
+  function clearSearchQuery() {
     try {
-      const currentText = getCurrentSearchText();
-      if (!currentText) return;
+      const currentQuery = getCurrentSearchQuery();
+      if (!currentQuery) return;
+      
+      toast(`Clearing "${currentQuery}"...`);
       
       // Send backspace events to clear existing text
-      for (let i = 0; i < currentText.length + 5; i++) {
+      for (let i = 0; i < currentQuery.length + 5; i++) {
         const event = new KeyboardEvent('keydown', {
           key: 'Backspace',
           keyCode: 8,
@@ -99,18 +73,18 @@ function enableNativeTextInput() {
         document.dispatchEvent(event);
       }
     } catch (err) {
-      console.warn("NTI: Could not clear search text:", err);
+      console.warn("NTI: Could not clear search query:", err);
     }
   }
 
-  // Trigger native keyboard and populate with current search text
+  // Trigger native keyboard with current search query prepopulated
   function openNativeKeyboard() {
-    const currentText = getCurrentSearchText();
-    toast("Opening keyboard" + (currentText ? ` (current: "${currentText}")` : "..."));
+    const currentQuery = getCurrentSearchQuery();
+    toast("Opening keyboard" + (currentQuery ? ` (current: "${currentQuery}")` : "..."));
 
-    // Clear existing text so the new input replaces it
-    if (currentText) {
-      clearSearchText();
+    // Clear existing query so the new input replaces it
+    if (currentQuery) {
+      clearSearchQuery();
     }
 
     try {
@@ -121,31 +95,33 @@ function enableNativeTextInput() {
     }
   }
 
-  // Use event delegation since search bar might not exist yet
-  document.addEventListener('click', (e) => {
-    const target = e.target.closest('ytlr-search-text-box ytlr-text-box');
-    if (target) {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      toast("Search bar clicked!");
-      openNativeKeyboard();
-      return false;
-    }
-  }, true); // capture phase
-
-  // Also intercept Enter key when search bar is focused
+  // Intercept Enter key on voice mic button
   document.addEventListener("keydown", (e) => {
     if (e.keyCode === 13 || e.key === "Enter") {
-      const currentSearchBar = document.querySelector('ytlr-search-text-box ytlr-text-box');
-      if (document.activeElement === currentSearchBar) {
+      const voiceMicButton = document.querySelector('ytlr-search-voice-mic-button');
+      if (voiceMicButton && voiceMicButton.classList.contains('zylon-focus')) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        toast("Enter pressed on search bar!");
+        
+        toast("Voice button: opening native keyboard instead!");
         openNativeKeyboard();
         return false;
       }
+    }
+  }, true); // capture phase
+
+  // Also intercept clicks on voice mic button
+  document.addEventListener("click", (e) => {
+    const voiceMicButton = e.target.closest('ytlr-search-voice-mic-button');
+    if (voiceMicButton) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      
+      toast("Voice button clicked: opening native keyboard!");
+      openNativeKeyboard();
+      return false;
     }
   }, true); // capture phase
 }
